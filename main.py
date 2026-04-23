@@ -1,57 +1,73 @@
-from flask import Flask, request, send_file, render_template_string
+from flask import Flask, render_template, request, send_file
 from docx import Document
 from datetime import datetime
 import os
 
 app = Flask(__name__)
 
-HTML_FORM = """
-<h2>KPI Licence Generator</h2>
-<form method="post">
-Name: <input name="name"><br><br>
-Room: <input name="room"><br><br>
-Property Address: <input name="address"><br><br>
-Start Date: <input name="start"><br><br>
-End Date: <input name="end"><br><br>
-Monthly Fee: <input name="rent"><br><br>
-Deposit: <input name="deposit"><br><br>
-Payment Reference: <input name="ref"><br><br>
-<button type="submit">Generate Contract</button>
-</form>
-"""
+TEMPLATE_PATH = "template.docx"
+OUTPUT_PATH = "output.docx"
 
-def replace_text(doc, data):
-    for p in doc.paragraphs:
-        for key, val in data.items():
-            if key in p.text:
-                p.text = p.text.replace(key, val)
+
+def replace_placeholders(doc, data):
+    """
+    Replaces placeholders while preserving formatting as much as possible.
+    Uses run-level replacement (prevents loss of bold/size).
+    """
+    for paragraph in doc.paragraphs:
+        for run in paragraph.runs:
+            for key, value in data.items():
+                if key in run.text:
+                    run.text = run.text.replace(key, value)
+
+    # tables support (important for contracts)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        for key, value in data.items():
+                            if key in run.text:
+                                run.text = run.text.replace(key, value)
+
 
 @app.route("/", methods=["GET", "POST"])
-def home():
+def index():
     if request.method == "POST":
+
+        name = request.form.get("name")
+        room = request.form.get("room")
+        rent = request.form.get("rent")
+        deposit = request.form.get("deposit")
+        address = request.form.get("address")
+        reference = request.form.get("reference")
+        start_date = request.form.get("start_date")
+        end_date = request.form.get("end_date")
+
         today = datetime.today().strftime("%d %B %Y")
 
+        doc = Document(TEMPLATE_PATH)
+
         data = {
-            "{{NAME}}": request.form["name"],
-            "{{ROOM}}": request.form["room"],
-            "{{ADDRESS}}": request.form["address"],
-            "{{START}}": request.form["start"],
-            "{{END}}": request.form["end"],
-            "{{RENT}}": request.form["rent"],
-            "{{DEPOSIT}}": request.form["deposit"],
-            "{{REF}}": request.form["ref"],
+            "{{NAME}}": name,
+            "{{ROOM}}": room,
+            "{{RENT}}": rent,
+            "{{DEPOSIT}}": deposit,
+            "{{ADDRESS}}": address,
+            "{{REFERENCE}}": reference,
+            "{{START_DATE}}": start_date,
+            "{{END_DATE}}": end_date,
             "{{TODAY}}": today
         }
 
-        doc = Document("template.docx")
-        replace_text(doc, data)
+        replace_placeholders(doc, data)
 
-        filename = "contract.docx"
-        doc.save(filename)
+        doc.save(OUTPUT_PATH)
 
-        return send_file(filename, as_attachment=True)
+        return send_file(OUTPUT_PATH, as_attachment=True)
 
-    return render_template_string(HTML_FORM)
+    return render_template("index.html")
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=True)
