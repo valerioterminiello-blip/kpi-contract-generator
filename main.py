@@ -4,68 +4,84 @@ import zipfile
 import os
 import shutil
 import tempfile
-import re
+from docx import Document
 
 app = Flask(__name__)
 
 TEMPLATE_PATH = "template.docx"
 
-def replace_all_placeholders_in_xml(xml_path, replacements):
+
+def merge_runs_in_paragraph(paragraph):
+    """Merge all runs in a paragraph into a single run, preserving text."""
+    if len(paragraph.runs) == 0:
+        return
+
+    full_text = "".join(run.text for run in paragraph.runs)
+
+    # Clear all runs except first
+    for i, run in enumerate(paragraph.runs):
+        if i == 0:
+            run.text = full_text
+        else:
+            run.text = ""
+
+
+def replace_in_document(doc, replacements):
     """
-    Replaces {{PLACEHOLDER}} in XML file using regex.
-    Handles placeholders split across XML tags.
+    Replace all {{PLACEHOLDER}} in document by:
+    1. Merging runs in each paragraph (fixes Word's split-run issue)
+    2. Doing simple text replacement
     """
-    with open(xml_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # Find all {{SOMETHING}} patterns and replace them
-    def replace_match(match):
-        key = match.group(1)
-        if key in replacements:
-            return str(replacements[key])
-        return match.group(0)  # Keep original if not found
-    
-    # Pattern: {{ followed by uppercase letters/numbers, followed by }}
-    content = re.sub(r'\{\{([A-Z][A-Z0-9_]*)\}\}', replace_match, content)
-    
-    with open(xml_path, 'w', encoding='utf-8') as f:
-        f.write(content)
+    # Process all paragraphs in main document
+    for paragraph in doc.paragraphs:
+        merge_runs_in_paragraph(paragraph)
+        if len(paragraph.runs) > 0:
+            for key, value in replacements.items():
+                placeholder = f"{{{{{key}}}}}"
+                if placeholder in paragraph.runs[0].text:
+                    paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+
+    # Process all tables
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    merge_runs_in_paragraph(paragraph)
+                    if len(paragraph.runs) > 0:
+                        for key, value in replacements.items():
+                            placeholder = f"{{{{{key}}}}}"
+                            if placeholder in paragraph.runs[0].text:
+                                paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+
+    # Process headers and footers
+    for section in doc.sections:
+        for paragraph in section.header.paragraphs:
+            merge_runs_in_paragraph(paragraph)
+            if len(paragraph.runs) > 0:
+                for key, value in replacements.items():
+                    placeholder = f"{{{{{key}}}}}"
+                    if placeholder in paragraph.runs[0].text:
+                        paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+
+        for paragraph in section.footer.paragraphs:
+            merge_runs_in_paragraph(paragraph)
+            if len(paragraph.runs) > 0:
+                for key, value in replacements.items():
+                    placeholder = f"{{{{{key}}}}}"
+                    if placeholder in paragraph.runs[0].text:
+                        paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
 
 
 def generate_contract(template_path, replacements):
-    temp_dir = tempfile.mkdtemp(prefix="docx_")
-    
-    try:
-        with zipfile.ZipFile(template_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
-        
-        xml_files = ["word/document.xml"]
-        word_dir = os.path.join(temp_dir, "word")
-        if os.path.exists(word_dir):
-            for f in os.listdir(word_dir):
-                if f.endswith(".xml"):
-                    xml_files.append(f"word/{f}")
-        
-        for xml_file in xml_files:
-            file_path = os.path.join(temp_dir, xml_file)
-            if os.path.exists(file_path):
-                replace_all_placeholders_in_xml(file_path, replacements)
-        
-        output_path = os.path.join(temp_dir, "output.docx")
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(temp_dir):
-                for file in files:
-                    if file == "output.docx":
-                        continue
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, temp_dir)
-                    zipf.write(file_path, arcname)
-        
-        return output_path
-        
-    except Exception as e:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise e
+    """Generate contract by loading template, replacing placeholders, saving output."""
+    doc = Document(template_path)
+    replace_in_document(doc, replacements)
+
+    # Save to temp file
+    temp_dir = tempfile.mkdtemp()
+    output_path = os.path.join(temp_dir, "output.docx")
+    doc.save(output_path)
+    return output_path
 
 
 @app.route('/')
@@ -85,10 +101,10 @@ def generate():
         room = request.form.get('room', '').strip()
         property_addr = request.form.get('property', '123 Daren Avenue SE1 4FR').strip()
         ref = request.form.get('ref', '').strip()
-        
+
         if not all([name, start_date, rent, deposit, room]):
             return "All fields are required", 400
-        
+
         # Format agreement date
         if agreement_date:
             try:
@@ -98,39 +114,39 @@ def generate():
                 formatted_agreement_date = agreement_date
         else:
             formatted_agreement_date = datetime.now().strftime("%d %B %Y")
-        
+
         # Format start date
         try:
             dt = datetime.strptime(start_date, "%d/%m/%Y")
             formatted_start = dt.strftime("%d %B %Y")
         except ValueError:
             formatted_start = start_date
-        
+
         # Format end date
         try:
             dt_end = datetime.strptime(end_date, "%d/%m/%Y")
             formatted_end = dt_end.strftime("%d %B %Y")
         except ValueError:
             formatted_end = end_date if end_date else "To be agreed"
-        
+
         # Format currency
         try:
-            rent_clean = rent.replace("£", "").replace(",", "").strip()
+            rent_clean = rent.replace("Â£", "").replace(",", "").strip()
             rent_formatted = f"{float(rent_clean):,.2f}"
         except:
             rent_formatted = rent
-        
+
         try:
-            dep_clean = deposit.replace("£", "").replace(",", "").strip()
+            dep_clean = deposit.replace("Â£", "").replace(",", "").strip()
             dep_formatted = f"{float(dep_clean):,.2f}"
         except:
             dep_formatted = deposit
-        
+
         # Auto-generate reference if blank
         if not ref:
             ref = f"KPI-{name.replace(' ', '-').upper()}-{datetime.now().strftime('%Y%m%d')}"
-        
-        # ALL placeholders - keys must be UPPERCASE
+
+        # ALL placeholders - will replace EVERY instance in the document
         replacements = {
             "DATE": formatted_agreement_date,
             "NAME": name,
@@ -143,22 +159,22 @@ def generate():
             "END": formatted_end,
             "REF": ref,
         }
-        
+
         if not os.path.exists(TEMPLATE_PATH):
             return f"Template not found: {os.path.abspath(TEMPLATE_PATH)}", 500
-        
+
         output_path = generate_contract(TEMPLATE_PATH, replacements)
-        
+
         safe_name = name.replace(" ", "_").replace("/", "_")
         download_name = f"Licence_Agreement_{safe_name}_{datetime.now().strftime('%Y%m%d')}.docx"
-        
+
         return send_file(
             output_path,
             as_attachment=True,
             download_name=download_name,
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
-        
+
     except Exception as e:
         import traceback
         return f"<pre>Error: {str(e)}\n\n{traceback.format_exc()}</pre>", 500
