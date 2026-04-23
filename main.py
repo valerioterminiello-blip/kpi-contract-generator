@@ -4,18 +4,29 @@ import zipfile
 import os
 import shutil
 import tempfile
+import re
 
 app = Flask(__name__)
 
 TEMPLATE_PATH = "template.docx"
 
 def replace_all_placeholders_in_xml(xml_path, replacements):
+    """
+    Replaces {{PLACEHOLDER}} in XML file using regex.
+    Handles placeholders split across XML tags.
+    """
     with open(xml_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    for key, value in replacements.items():
-        placeholder = f"{{{{{key}}}}}"
-        content = content.replace(placeholder, str(value))
+    # Find all {{SOMETHING}} patterns and replace them
+    def replace_match(match):
+        key = match.group(1)
+        if key in replacements:
+            return str(replacements[key])
+        return match.group(0)  # Keep original if not found
+    
+    # Pattern: {{ followed by uppercase letters/numbers, followed by }}
+    content = re.sub(r'\{\{([A-Z][A-Z0-9_]*)\}\}', replace_match, content)
     
     with open(xml_path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -78,7 +89,7 @@ def generate():
         if not all([name, start_date, rent, deposit, room]):
             return "All fields are required", 400
         
-        # Format agreement date (the date the form is filled out / contract is dated)
+        # Format agreement date
         if agreement_date:
             try:
                 dt = datetime.strptime(agreement_date, "%d/%m/%Y")
@@ -86,7 +97,6 @@ def generate():
             except ValueError:
                 formatted_agreement_date = agreement_date
         else:
-            # Default to today if not provided
             formatted_agreement_date = datetime.now().strftime("%d %B %Y")
         
         # Format start date
@@ -120,9 +130,9 @@ def generate():
         if not ref:
             ref = f"KPI-{name.replace(' ', '-').upper()}-{datetime.now().strftime('%Y%m%d')}"
         
-        # ALL placeholders
+        # ALL placeholders - keys must be UPPERCASE
         replacements = {
-            "DATE": formatted_agreement_date,   # User-selected date (or today)
+            "DATE": formatted_agreement_date,
             "NAME": name,
             "RENT": rent_formatted,
             "START": formatted_start,
