@@ -7,7 +7,7 @@ import tempfile
 
 app = Flask(__name__)
 
-TEMPLATE_PATH = "licence_template.docx"
+TEMPLATE_PATH = "template.docx"
 
 def generate_contract(template_path, replacements):
     temp_dir = tempfile.mkdtemp(prefix="docx_")
