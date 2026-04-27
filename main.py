@@ -10,11 +10,10 @@ from docx import Document
 app = Flask(__name__)
 
 AGREEMENT_TEMPLATE = "template.docx"
-IRR_TEMPLATE = "irrtemplate.docx"
+IRR_TEMPLATE = "IRRTEMPLATE.docx"
 
 
 def ordinal(n):
-    """Add ordinal suffix: 1 -> 1st, 2 -> 2nd, 3 -> 3rd, 4 -> 4th"""
     if 11 <= n % 100 <= 13:
         suffix = 'th'
     else:
@@ -23,13 +22,11 @@ def ordinal(n):
 
 
 def format_date_ordinal(date_str):
-    """Convert YYYY-MM-DD to '23rd April 2026' format"""
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     return f"{ordinal(dt.day)} {dt.strftime('%B %Y')}"
 
 
 def merge_runs_in_paragraph(paragraph):
-    """Merge all runs in a paragraph into a single run, preserving text."""
     if len(paragraph.runs) == 0:
         return
     full_text = "".join(run.text for run in paragraph.runs)
@@ -41,7 +38,6 @@ def merge_runs_in_paragraph(paragraph):
 
 
 def replace_placeholders(text, replacements):
-    """Find all {{KEY}} patterns and replace them, handling whitespace in keys."""
     def replace_match(match):
         key = match.group(1).strip()
         if key in replacements:
@@ -51,7 +47,6 @@ def replace_placeholders(text, replacements):
 
 
 def replace_in_document(doc, replacements):
-    """Replace all {{PLACEHOLDER}} in document."""
     for paragraph in doc.paragraphs:
         merge_runs_in_paragraph(paragraph)
         if len(paragraph.runs) > 0:
@@ -78,7 +73,6 @@ def replace_in_document(doc, replacements):
 
 
 def generate_document(template_path, replacements, output_name):
-    """Generate document from template with replacements."""
     doc = Document(template_path)
     replace_in_document(doc, replacements)
     temp_dir = tempfile.mkdtemp()
@@ -88,7 +82,6 @@ def generate_document(template_path, replacements, output_name):
 
 
 def calculate_weekly_rent(monthly_rent):
-    """Calculate weekly rent from monthly (monthly * 12 / 52)."""
     try:
         monthly = float(monthly_rent.replace("£", "").replace(",", "").strip())
         weekly = (monthly * 12) / 52
@@ -105,7 +98,6 @@ def index():
 @app.route('/generate', methods=['POST'])
 def generate():
     try:
-        # Personal details
         name = request.form.get('name', '').strip()
         email = request.form.get('email', '').strip()
         mobile = request.form.get('mobile', '').strip()
@@ -113,8 +105,6 @@ def generate():
         kin_phone = request.form.get('kin_phone', '').strip()
         kin_email = request.form.get('kin_email', '').strip()
         employer = request.form.get('employer', '').strip()
-        
-        # Property details
         agreement_date = request.form.get('agreement_date', '').strip()
         start_date = request.form.get('start_date', '').strip()
         end_date = request.form.get('end_date', '').strip()
@@ -129,10 +119,8 @@ def generate():
         if not all([name, start_date, rent, deposit, room]):
             return "All required fields must be filled", 400
         
-        # Extract surname for filenames
         surname = name.split()[-1] if name else "Tenant"
         
-        # Format dates with ordinals
         if agreement_date:
             formatted_agreement_date = format_date_ordinal(agreement_date)
         else:
@@ -141,7 +129,6 @@ def generate():
         formatted_start = format_date_ordinal(start_date)
         formatted_end = format_date_ordinal(end_date) if end_date else "To be agreed"
         
-        # Format currency
         try:
             rent_clean = rent.replace("£", "").replace(",", "").strip()
             rent_formatted = f"{float(rent_clean):,.2f}"
@@ -154,7 +141,6 @@ def generate():
         except:
             dep_formatted = deposit
         
-        # Calculate derived values
         weekly_rent = calculate_weekly_rent(rent_formatted)
         
         try:
@@ -163,11 +149,9 @@ def generate():
         except:
             utilities_formatted = utilities
         
-        # Auto-generate reference if blank
         if not ref:
             ref = f"{surname.upper()}.{property_addr.split()[0].upper()}"
         
-        # Build KIN string
         kin_full = f"{kin_name}"
         if kin_phone:
             kin_full += f" - {kin_phone}"
@@ -223,12 +207,19 @@ def generate():
             f"IRR{surname}.docx"
         )
         
-        # Return Agreement file (primary download)
+        # ZIP BOTH FILES TOGETHER
+        temp_dir = tempfile.mkdtemp()
+        zip_path = os.path.join(temp_dir, f"KPI_{surname}_Documents.zip")
+        
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(agreement_path, f"Agreement{surname}.docx")
+            zipf.write(irr_path, f"IRR{surname}.docx")
+        
         return send_file(
-            agreement_path,
+            zip_path,
             as_attachment=True,
-            download_name=f"Agreement{surname}.docx",
-            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            download_name=f"KPI_{surname}_Documents.zip",
+            mimetype='application/zip'
         )
         
     except Exception as e:
