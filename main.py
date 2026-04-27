@@ -4,15 +4,17 @@ import zipfile
 import os
 import shutil
 import tempfile
+import re
 from docx import Document
 
 app = Flask(__name__)
 
-TEMPLATE_PATH = "template.docx"
+AGREEMENT_TEMPLATE = "template.docx"
+IRR_TEMPLATE = "irrtemplate.docx"
 
 
 def ordinal(n):
-    """Add ordinal suffix to day number: 1 -> 1st, 2 -> 2nd, 3 -> 3rd, 4 -> 4th"""
+    """Add ordinal suffix: 1 -> 1st, 2 -> 2nd, 3 -> 3rd, 4 -> 4th"""
     if 11 <= n % 100 <= 13:
         suffix = 'th'
     else:
@@ -38,19 +40,22 @@ def merge_runs_in_paragraph(paragraph):
             run.text = ""
 
 
+def replace_placeholders(text, replacements):
+    """Find all {{KEY}} patterns and replace them, handling whitespace in keys."""
+    def replace_match(match):
+        key = match.group(1).strip()
+        if key in replacements:
+            return str(replacements[key])
+        return match.group(0)
+    return re.sub(r'\{\{([^}]+)\}\}', replace_match, text)
+
+
 def replace_in_document(doc, replacements):
-    """
-    Replace all {{PLACEHOLDER}} in document by:
-    1. Merging runs in each paragraph (fixes Word's split-run issue)
-    2. Doing simple text replacement
-    """
+    """Replace all {{PLACEHOLDER}} in document."""
     for paragraph in doc.paragraphs:
         merge_runs_in_paragraph(paragraph)
         if len(paragraph.runs) > 0:
-            for key, value in replacements.items():
-                placeholder = f"{{{{{key}}}}}"
-                if placeholder in paragraph.runs[0].text:
-                    paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+            paragraph.runs[0].text = replace_placeholders(paragraph.runs[0].text, replacements)
     
     for table in doc.tables:
         for row in table.rows:
@@ -58,37 +63,38 @@ def replace_in_document(doc, replacements):
                 for paragraph in cell.paragraphs:
                     merge_runs_in_paragraph(paragraph)
                     if len(paragraph.runs) > 0:
-                        for key, value in replacements.items():
-                            placeholder = f"{{{{{key}}}}}"
-                            if placeholder in paragraph.runs[0].text:
-                                paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+                        paragraph.runs[0].text = replace_placeholders(paragraph.runs[0].text, replacements)
     
     for section in doc.sections:
         for paragraph in section.header.paragraphs:
             merge_runs_in_paragraph(paragraph)
             if len(paragraph.runs) > 0:
-                for key, value in replacements.items():
-                    placeholder = f"{{{{{key}}}}}"
-                    if placeholder in paragraph.runs[0].text:
-                        paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+                paragraph.runs[0].text = replace_placeholders(paragraph.runs[0].text, replacements)
         
         for paragraph in section.footer.paragraphs:
             merge_runs_in_paragraph(paragraph)
             if len(paragraph.runs) > 0:
-                for key, value in replacements.items():
-                    placeholder = f"{{{{{key}}}}}"
-                    if placeholder in paragraph.runs[0].text:
-                        paragraph.runs[0].text = paragraph.runs[0].text.replace(placeholder, str(value))
+                paragraph.runs[0].text = replace_placeholders(paragraph.runs[0].text, replacements)
 
 
-def generate_contract(template_path, replacements):
-    """Generate contract by loading template, replacing placeholders, saving output."""
+def generate_document(template_path, replacements, output_name):
+    """Generate document from template with replacements."""
     doc = Document(template_path)
     replace_in_document(doc, replacements)
     temp_dir = tempfile.mkdtemp()
-    output_path = os.path.join(temp_dir, "output.docx")
+    output_path = os.path.join(temp_dir, output_name)
     doc.save(output_path)
     return output_path
+
+
+def calculate_weekly_rent(monthly_rent):
+    """Calculate weekly rent from monthly (monthly * 12 / 52)."""
+    try:
+        monthly = float(monthly_rent.replace("£", "").replace(",", "").strip())
+        weekly = (monthly * 12) / 52
+        return f"{weekly:.2f}"
+    except:
+        return "0.00"
 
 
 @app.route('/')
@@ -99,7 +105,16 @@ def index():
 @app.route('/generate', methods=['POST'])
 def generate():
     try:
+        # Personal details
         name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        mobile = request.form.get('mobile', '').strip()
+        kin_name = request.form.get('kin_name', '').strip()
+        kin_phone = request.form.get('kin_phone', '').strip()
+        kin_email = request.form.get('kin_email', '').strip()
+        employer = request.form.get('employer', '').strip()
+        
+        # Property details
         agreement_date = request.form.get('agreement_date', '').strip()
         start_date = request.form.get('start_date', '').strip()
         end_date = request.form.get('end_date', '').strip()
@@ -107,12 +122,17 @@ def generate():
         deposit = request.form.get('deposit', '').strip()
         room = request.form.get('room', '').strip()
         property_addr = request.form.get('property', '123 Daren Avenue SE1 4FR').strip()
+        term_months = request.form.get('term_months', '12').strip()
+        utilities = request.form.get('utilities', '250').strip()
         ref = request.form.get('ref', '').strip()
         
         if not all([name, start_date, rent, deposit, room]):
-            return "All fields are required", 400
+            return "All required fields must be filled", 400
         
-        # Format dates WITH ordinal suffixes (1st, 2nd, 3rd, 4th)
+        # Extract surname for filenames
+        surname = name.split()[-1] if name else "Tenant"
+        
+        # Format dates with ordinals
         if agreement_date:
             formatted_agreement_date = format_date_ordinal(agreement_date)
         else:
@@ -134,12 +154,28 @@ def generate():
         except:
             dep_formatted = deposit
         
+        # Calculate derived values
+        weekly_rent = calculate_weekly_rent(rent_formatted)
+        
+        try:
+            util_clean = utilities.replace("£", "").replace(",", "").strip()
+            utilities_formatted = f"{float(util_clean):,.2f}"
+        except:
+            utilities_formatted = utilities
+        
         # Auto-generate reference if blank
         if not ref:
-            ref = f"KPI-{name.replace(' ', '-').upper()}-{datetime.now().strftime('%Y%m%d')}"
+            ref = f"{surname.upper()}.{property_addr.split()[0].upper()}"
         
-        # ALL placeholders
-        replacements = {
+        # Build KIN string
+        kin_full = f"{kin_name}"
+        if kin_phone:
+            kin_full += f" - {kin_phone}"
+        if kin_email:
+            kin_full += f" - {kin_email}"
+        
+        # Generate Agreement
+        agreement_replacements = {
             "DATE": formatted_agreement_date,
             "NAME": name,
             "RENT": rent_formatted,
@@ -152,18 +188,46 @@ def generate():
             "REF": ref,
         }
         
-        if not os.path.exists(TEMPLATE_PATH):
-            return f"Template not found: {os.path.abspath(TEMPLATE_PATH)}", 500
+        if not os.path.exists(AGREEMENT_TEMPLATE):
+            return f"Agreement template not found: {os.path.abspath(AGREEMENT_TEMPLATE)}", 500
         
-        output_path = generate_contract(TEMPLATE_PATH, replacements)
+        agreement_path = generate_document(
+            AGREEMENT_TEMPLATE, 
+            agreement_replacements, 
+            f"Agreement{surname}.docx"
+        )
         
-        safe_name = name.replace(" ", "_").replace("/", "_")
-        download_name = f"Licence_Agreement_{safe_name}_{datetime.now().strftime('%Y%m%d')}.docx"
+        # Generate IRR
+        irr_replacements = {
+            "DATE": formatted_agreement_date,
+            "NAME": name,
+            "EMAIL": email,
+            "MOBILE": mobile,
+            "KIN": kin_full,
+            "EMPLOYER": employer,
+            "ADDRESS": property_addr,
+            "ROOM": room.upper(),
+            "PW": weekly_rent,
+            "PCM": rent_formatted,
+            "MONTHS": term_months,
+            "START": formatted_start,
+            "END": formatted_end,
+        }
         
+        if not os.path.exists(IRR_TEMPLATE):
+            return f"IRR template not found: {os.path.abspath(IRR_TEMPLATE)}", 500
+        
+        irr_path = generate_document(
+            IRR_TEMPLATE, 
+            irr_replacements, 
+            f"IRR{surname}.docx"
+        )
+        
+        # Return Agreement file (primary download)
         return send_file(
-            output_path,
+            agreement_path,
             as_attachment=True,
-            download_name=download_name,
+            download_name=f"Agreement{surname}.docx",
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
         
