@@ -5,13 +5,13 @@ import os
 import shutil
 import tempfile
 import re
+import calendar
 from docx import Document
 
 app = Flask(__name__)
 
 AGREEMENT_TEMPLATE = "template.docx"
-IRR_TEMPLATE = "irrtemplate.docx"
-
+IRR_TEMPLATE = "IRRTEMPLATE.docx"
 
 
 def ordinal(n):
@@ -86,9 +86,18 @@ def calculate_weekly_rent(monthly_rent):
     try:
         monthly = float(monthly_rent.replace("£", "").replace(",", "").strip())
         weekly = (monthly * 12) / 52
-        return f"{weekly:.2f}"
+        return round(weekly, 2)
     except:
-        return "0.00"
+        return 0.00
+
+
+def calculate_pro_rata(monthly_rent, start_date_str):
+    dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+    monthly = float(monthly_rent.replace("£", "").replace(",", "").strip())
+    days_in_month = calendar.monthrange(dt.year, dt.month)[1]
+    remaining_days = days_in_month - dt.day + 1
+    pro_rata = (monthly / days_in_month) * remaining_days
+    return round(pro_rata, 2)
 
 
 @app.route('/')
@@ -143,12 +152,17 @@ def generate():
             dep_formatted = deposit
         
         weekly_rent = calculate_weekly_rent(rent_formatted)
+        pro_rata = calculate_pro_rata(rent_formatted, start_date)
         
         try:
             util_clean = utilities.replace("£", "").replace(",", "").strip()
             utilities_formatted = f"{float(util_clean):,.2f}"
         except:
             utilities_formatted = utilities
+        
+        total_due = pro_rata + float(dep_clean) + float(utilities_formatted)
+        holding_deposit = weekly_rent
+        move_in_balance = total_due - holding_deposit
         
         if not ref:
             ref = f"{surname.upper()}.{property_addr.split()[0].upper()}"
@@ -159,7 +173,6 @@ def generate():
         if kin_email:
             kin_full += f" - {kin_email}"
         
-        # Generate Agreement
         agreement_replacements = {
             "DATE": formatted_agreement_date,
             "NAME": name,
@@ -182,7 +195,6 @@ def generate():
             f"Agreement{surname}.docx"
         )
         
-        # Generate IRR
         irr_replacements = {
             "DATE": formatted_agreement_date,
             "NAME": name,
@@ -192,11 +204,16 @@ def generate():
             "EMPLOYER": employer,
             "ADDRESS": property_addr,
             "ROOM": room.upper(),
-            "PW": weekly_rent,
+            "PW": f"{weekly_rent:.2f}",
             "PCM": rent_formatted,
             "MONTHS": term_months,
             "START": formatted_start,
             "END": formatted_end,
+            "DEPOSIT": dep_formatted,
+            "PRO_RATA": f"{pro_rata:.2f}",
+            "TOTAL_DUE": f"{total_due:.2f}",
+            "HOLDING_DEPOSIT": f"{holding_deposit:.2f}",
+            "MOVE_IN_BALANCE": f"{move_in_balance:.2f}",
         }
         
         if not os.path.exists(IRR_TEMPLATE):
@@ -208,7 +225,6 @@ def generate():
             f"IRR{surname}.docx"
         )
         
-        # ZIP BOTH FILES TOGETHER
         temp_dir = tempfile.mkdtemp()
         zip_path = os.path.join(temp_dir, f"KPI_{surname}_Documents.zip")
         
