@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 AGREEMENT_TEMPLATE = "template.docx"
 IRR_TEMPLATE = "irrtemplate.docx"
-"
+
 
 
 def ordinal(n):
