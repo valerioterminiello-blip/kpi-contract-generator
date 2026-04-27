@@ -10,7 +10,8 @@ from docx import Document
 app = Flask(__name__)
 
 AGREEMENT_TEMPLATE = "template.docx"
-IRR_TEMPLATE = "IRRTEMPLATE.docx"
+IRR_TEMPLATE = "irrtemplate.docx"
+"
 
 
 def ordinal(n):
