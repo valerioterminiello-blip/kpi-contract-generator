@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KPI Licence Agreement</title>
+    <title>KPI Licence Agreement & IRR Generator</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -12,8 +12,8 @@
             min-height: 100vh;
             display: flex;
             justify-content: center;
-            align-items: center;
-            padding: 20px;
+            align-items: flex-start;
+            padding: 40px 20px;
         }
         .container {
             background: white;
@@ -21,13 +21,21 @@
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
         }
         h1 { color: #333; margin-bottom: 8px; font-size: 24px; }
         .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
-        .form-group { margin-bottom: 20px; }
+        .section-title {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 25px 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #667eea;
+        }
+        .form-group { margin-bottom: 18px; }
         label { display: block; margin-bottom: 6px; color: #555; font-weight: 500; font-size: 14px; }
-        input {
+        input, select {
             width: 100%;
             padding: 12px 16px;
             border: 2px solid #e0e0e0;
@@ -35,72 +43,99 @@
             font-size: 15px;
             font-family: inherit;
         }
-        input:focus { outline: none; border-color: #667eea; }
-        input[type="date"] {
-            cursor: pointer;
-        }
+        input:focus, select:focus { outline: none; border-color: #667eea; }
+        input[type="date"] { cursor: pointer; }
         .row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
         button {
             width: 100%;
-            padding: 14px;
+            padding: 16px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
         }
         button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
         .logo { text-align: center; margin-bottom: 20px; }
         .logo-text {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: 800;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        /* Custom date picker styling */
-        ::-webkit-calendar-picker-indicator {
-            cursor: pointer;
-            opacity: 0.6;
-            transition: 0.2s;
-        }
-        ::-webkit-calendar-picker-indicator:hover {
-            opacity: 1;
+        .hint {
+            color: #999;
+            font-size: 12px;
+            margin-top: 4px;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="logo"><div class="logo-text">KPI</div></div>
-        <h1>Licence Agreement</h1>
-        <p class="subtitle">Generate professional licence agreements instantly</p>
+        <h1>Licence Agreement & IRR Generator</h1>
+        <p class="subtitle">Generate both documents in one click</p>
         
         <form action="/generate" method="POST">
+            
+            <div class="section-title">Personal Details</div>
+            
             <div class="form-group">
-                <label>Full Name</label>
-                <input type="text" name="name" placeholder="e.g. John Smith" required>
+                <label>Full Name *</label>
+                <input type="text" name="name" placeholder="e.g. John Carter" required>
             </div>
+            
             <div class="row">
                 <div class="form-group">
-                    <label>Agreement Date</label>
-                    <input type="date" name="agreement_date" required>
+                    <label>Email *</label>
+                    <input type="email" name="email" placeholder="john@email.com" required>
                 </div>
                 <div class="form-group">
-                    <label>Start Date</label>
-                    <input type="date" name="start_date" required>
+                    <label>Mobile *</label>
+                    <input type="tel" name="mobile" placeholder="07700 900123" required>
                 </div>
             </div>
+            
+            <div class="section-title">Next of Kin</div>
+            
             <div class="form-group">
-                <label>End Date</label>
-                <input type="date" name="end_date">
+                <label>Next of Kin Name</label>
+                <input type="text" name="kin_name" placeholder="e.g. Jane Carter">
             </div>
+            
             <div class="row">
                 <div class="form-group">
-                    <label>Room Number</label>
+                    <label>Next of Kin Phone</label>
+                    <input type="tel" name="kin_phone" placeholder="07700 900456">
+                </div>
+                <div class="form-group">
+                    <label>Next of Kin Email</label>
+                    <input type="email" name="kin_email" placeholder="jane@email.com">
+                </div>
+            </div>
+            
+            <div class="section-title">Employment & Property</div>
+            
+            <div class="form-group">
+                <label>Current Employer / University</label>
+                <input type="text" name="employer" placeholder="e.g. University of London">
+            </div>
+            
+            <div class="form-group">
+                <label>Property Address *</label>
+                <input type="text" name="property" value="123 Daren Avenue SE1 4FR" required>
+            </div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label>Room Number *</label>
                     <input type="text" name="room" placeholder="e.g. A" required>
                 </div>
                 <div class="form-group">
@@ -108,21 +143,51 @@
                     <input type="text" name="ref" placeholder="Auto-generated if blank">
                 </div>
             </div>
+            
+            <div class="section-title">Dates & Terms</div>
+            
             <div class="row">
                 <div class="form-group">
-                    <label>Monthly Rent (£)</label>
+                    <label>Agreement Date *</label>
+                    <input type="date" name="agreement_date" required>
+                </div>
+                <div class="form-group">
+                    <label>Start Date *</label>
+                    <input type="date" name="start_date" required>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label>End Date</label>
+                    <input type="date" name="end_date">
+                </div>
+                <div class="form-group">
+                    <label>Term (Months) *</label>
+                    <input type="number" name="term_months" value="12" min="1" max="60" required>
+                </div>
+            </div>
+            
+            <div class="section-title">Financial Details</div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label>Monthly Rent (£) *</label>
                     <input type="text" name="rent" placeholder="850" required>
                 </div>
                 <div class="form-group">
-                    <label>Deposit (£)</label>
+                    <label>Deposit (£) *</label>
                     <input type="text" name="deposit" placeholder="1400" required>
                 </div>
             </div>
+            
             <div class="form-group">
-                <label>Property Address</label>
-                <input type="text" name="property" value="123 Daren Avenue SE1 4FR">
+                <label>Utilities Contribution (£)</label>
+                <input type="text" name="utilities" value="250">
+                <div class="hint">Standard contribution upon move-in</div>
             </div>
-            <button type="submit">Generate Agreement</button>
+            
+            <button type="submit">Generate Agreement & IRR</button>
         </form>
     </div>
 </body>
