@@ -9,8 +9,8 @@ from docx import Document
 
 app = Flask(__name__)
 
-AGREEMENT_TEMPLATE = "TEMPLATE.docx"
-IRR_TEMPLATE = "irrtemplate.docx"
+AGREEMENT_TEMPLATE = "template.docx"
+IRR_TEMPLATE = "IRRTEMPLATE.docx"
 
 
 # ---------- DATE FORMAT ----------
