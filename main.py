@@ -9,7 +9,7 @@ from docx import Document
 
 app = Flask(__name__)
 
-AGREEMENT_TEMPLATE = "template.docx"
+AGREEMENT_TEMPLATE = "TEMPLATE.docx"
 IRR_TEMPLATE = "irrtemplate.docx"
 
 
