@@ -1,7 +1,6 @@
-from flask import Flask, render_template, request, send_file, Response
+from flask import Flask, render_template, request, send_file
 from datetime import datetime
 from docxtpl import DocxTemplate
-from functools import wraps
 import zipfile
 import os
 import tempfile
@@ -11,35 +10,6 @@ app = Flask(__name__)
 
 AGREEMENT_TEMPLATE = "template.docx"
 IRR_TEMPLATE = "IRRTEMPLATE.docx"
-
-# ---------- PASSWORD PROTECTION ----------
-# Set these as environment variables (never commit them to GitHub).
-# Locally:  export APP_USERNAME=agency  APP_PASSWORD=yourchoice
-# On Render: set them in the dashboard under Environment.
-APP_USERNAME = os.environ.get("APP_USERNAME", "admin")
-APP_PASSWORD = os.environ.get("APP_PASSWORD")
-
-
-def check_auth(username, password):
-    return password is not None and username == APP_USERNAME and password == APP_PASSWORD
-
-
-def requires_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not APP_PASSWORD:
-            return (
-                "Server misconfigured: set the APP_PASSWORD environment "
-                "variable before running this app.", 500
-            )
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return Response(
-                "Login required.", 401,
-                {"WWW-Authenticate": 'Basic realm="Contract Generator"'}
-            )
-        return f(*args, **kwargs)
-    return decorated
 
 
 # ---------- DATE FORMAT ----------
@@ -55,17 +25,6 @@ def format_date_ordinal(date_str):
 
 
 # ---------- DOCX GENERATION (docxtpl) ----------
-# docxtpl reads {{ TAG }} placeholders straight out of the .docx and fills
-# them in at the XML level, so it does NOT flatten formatting the way the
-# old run-splitting code did. A bold price stays bold, a different font in
-# one clause stays that font, etc. It also copes fine with Word having
-# split a placeholder across multiple runs (which is what caused fields to
-# sometimes not fill in at all in the old version).
-#
-# IMPORTANT: your existing templates already use {{NAME}}-style tags, and
-# that is exactly the syntax docxtpl expects — so in most cases you will
-# NOT need to touch your Word templates at all. Just drop the same
-# template.docx / IRRTEMPLATE.docx files into this folder.
 def generate_doc(template_path, context, filename):
     doc = DocxTemplate(template_path)
     doc.render(context)
@@ -98,13 +57,11 @@ def pro_rata(monthly, start_date):
 
 # ---------- ROUTES ----------
 @app.route('/')
-@requires_auth
 def index():
     return render_template("index.html")
 
 
 @app.route('/generate', methods=['POST'])
-@requires_auth
 def generate():
     try:
         # ---- INPUTS ----
@@ -244,15 +201,10 @@ def generate():
         return send_file(zip_path, as_attachment=True)
 
     except Exception as e:
-        # Friendly message in the browser; full detail in the terminal
-        # where you're running the app, instead of exposed to whoever
-        # is filling in the form.
         import traceback
         print(traceback.format_exc())
         return f"Something went wrong generating the documents: {e}", 500
 
 
 if __name__ == "__main__":
-    # Local run only — Render uses gunicorn instead (see Procfile) and
-    # never hits this block.
     app.run(debug=True, host="127.0.0.1", port=int(os.environ.get("PORT", 5000)))
